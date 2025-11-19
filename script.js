@@ -175,7 +175,7 @@ function createAudioVisualization(player, visualization) {
 			options.type = visualization;
 		}
 	} else {
-		options = {type: 'cubes'}
+		options = { type: 'cubes' }
 	}
 
 	options.skipUserEventsWatcher = true;
@@ -192,8 +192,41 @@ function hideLoadingIcon() {
 	document.getElementById('loading').style.display = 'none';
 }
 
+function convertYouTubeToInvidious(url) {
+	// Extraire l'ID de la vidéo YouTube
+	var videoId = null;
+
+	// Format youtube.com/watch?v=ID
+	if (url.includes('youtube.com/watch')) {
+		var match = url.match(/[?&]v=([^&]+)/);
+		if (match) videoId = match[1];
+	}
+	// Format youtu.be/ID
+	else if (url.includes('youtu.be/')) {
+		var match = url.match(/youtu\.be\/([^?&]+)/);
+		if (match) videoId = match[1];
+	}
+	// Format youtube.com/embed/ID
+	else if (url.includes('youtube.com/embed/')) {
+		var match = url.match(/embed\/([^?&]+)/);
+		if (match) videoId = match[1];
+	}
+
+	// Si on a trouvé un ID, convertir en lien Invidious
+	if (videoId) {
+		// Instance Invidious publique (vous pouvez changer pour une autre instance)
+		return 'https://invidious.snopyta.org/watch?v=' + videoId;
+	}
+
+	return url;
+}
+
 function resolveUrl(url) {
 	if (url.startsWith('http://') || url.startsWith('https://')) {
+		// Convertir les liens YouTube en Invidious pour éviter les pubs
+		if (url.includes('youtube.com') || url.includes('youtu.be')) {
+			return convertYouTubeToInvidious(url);
+		}
 		return url;
 	} else {
 		return 'http://' + currentServerEndpoint + '/pmms/media/' + url;
@@ -207,11 +240,11 @@ function initPlayer(id, handle, options) {
 	document.body.appendChild(player);
 
 	if (options.attenuation == null) {
-		options.attenuation = {sameRoom: 0, diffRoom: 0};
+		options.attenuation = { sameRoom: 0, diffRoom: 0 };
 	}
 
 	new MediaElement(id, {
-		error: function(media) {
+		error: function (media) {
 			hideLoadingIcon();
 
 			sendMessage('initError', {
@@ -221,7 +254,7 @@ function initPlayer(id, handle, options) {
 
 			media.remove();
 		},
-		success: function(media, domNode) {
+		success: function (media, domNode) {
 			media.className = 'player';
 
 			media.pmms = {};
@@ -252,7 +285,7 @@ function initPlayer(id, handle, options) {
 				hideLoadingIcon();
 
 				var duration;
-				
+
 				if (media.duration == NaN || media.duration == Infinity || media.duration == 0 || media.hlsPlayer) {
 					options.offset = 0;
 					options.duration = false;
@@ -264,7 +297,7 @@ function initPlayer(id, handle, options) {
 				if (media.youTubeApi) {
 					options.title = media.youTubeApi.getVideoData().title;
 
-					media.videoTracks = {length: 1};
+					media.videoTracks = { length: 1 };
 				} else if (media.hlsPlayer) {
 					media.videoTracks = media.hlsPlayer.videoTracks;
 				} else if (media.twitchPlayer) {
@@ -392,7 +425,7 @@ function setVolume(player, target) {
 	if (Math.abs(player.volume - target) > 0.1) {
 		if (player.volume > target) {
 			player.volume -= 0.05;
-		} else{
+		} else {
 			player.volume += 0.05;
 		}
 	}
@@ -471,7 +504,7 @@ window.addEventListener('message', event => {
 			update(event.data);
 			break;
 		case 'DuiBrowser:init':
-			sendMessage('DuiBrowser:initDone', {handle: event.data.handle});
+			sendMessage('DuiBrowser:initDone', { handle: event.data.handle });
 			break;
 	}
 });
