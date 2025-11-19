@@ -192,8 +192,7 @@ function hideLoadingIcon() {
 	document.getElementById('loading').style.display = 'none';
 }
 
-function convertYouTubeToInvidious(url) {
-	// Extraire l'ID de la vidéo YouTube
+function extractYouTubeId(url) {
 	var videoId = null;
 
 	// Format youtube.com/watch?v=ID
@@ -212,10 +211,61 @@ function convertYouTubeToInvidious(url) {
 		if (match) videoId = match[1];
 	}
 
-	// Si on a trouvé un ID, convertir en lien Invidious
+	return videoId;
+}
+
+async function getYouTubeDirectUrl(videoId) {
+	// Instances Invidious à essayer
+	var instances = [
+		'https://invidious.private.coffee',
+		'https://yt.artemislena.eu',
+		'https://invidious.fdn.fr',
+		'https://inv.nadeko.net'
+	];
+
+	// Essayer chaque instance jusqu'à ce qu'une fonctionne
+	for (var i = 0; i < instances.length; i++) {
+		try {
+			var apiUrl = instances[i] + '/api/v1/videos/' + videoId;
+			var response = await fetch(apiUrl);
+
+			if (response.ok) {
+				var data = await response.json();
+
+				// Chercher le meilleur format disponible (720p ou 480p)
+				if (data.adaptiveFormats && data.adaptiveFormats.length > 0) {
+					// Filtrer pour avoir vidéo + audio combinés
+					var formats = data.formatStreams || [];
+
+					// Prendre le format 720p (itag 22) ou 360p (itag 18)
+					for (var j = 0; j < formats.length; j++) {
+						if (formats[j].qualityLabel === '720p' || formats[j].qualityLabel === '360p') {
+							return formats[j].url;
+						}
+					}
+
+					// Sinon prendre le premier format disponible
+					if (formats.length > 0) {
+						return formats[0].url;
+					}
+				}
+			}
+		} catch (error) {
+			console.log('Instance ' + instances[i] + ' failed, trying next...');
+			continue;
+		}
+	}
+
+	// Si toutes les instances échouent, retourner null
+	return null;
+}
+
+function convertYouTubeUrl(url) {
+	var videoId = extractYouTubeId(url);
+
 	if (videoId) {
-		// Instance Invidious publique (vous pouvez changer pour une autre instance)
-		return 'https://invidious.snopyta.org/watch?v=' + videoId;
+		// Marquer cette URL comme étant YouTube pour traitement spécial
+		return 'YOUTUBE:' + videoId;
 	}
 
 	return url;
@@ -223,9 +273,9 @@ function convertYouTubeToInvidious(url) {
 
 function resolveUrl(url) {
 	if (url.startsWith('http://') || url.startsWith('https://')) {
-		// Convertir les liens YouTube en Invidious pour éviter les pubs
+		// Convertir les liens YouTube au format embed optimisé
 		if (url.includes('youtube.com') || url.includes('youtu.be')) {
-			return convertYouTubeToInvidious(url);
+			return convertYouTubeUrl(url);
 		}
 		return url;
 	} else {
@@ -233,10 +283,25 @@ function resolveUrl(url) {
 	}
 }
 
-function initPlayer(id, handle, options) {
+async function initPlayer(id, handle, options) {
+	var resolvedUrl = resolveUrl(options.url);
+
+	// Si c'est une vidéo YouTube, récupérer l'URL directe
+	if (resolvedUrl.startsWith('YOUTUBE:')) {
+		var videoId = resolvedUrl.replace('YOUTUBE:', '');
+		var directUrl = await getYouTubeDirectUrl(videoId);
+
+		if (directUrl) {
+			resolvedUrl = directUrl;
+		} else {
+			// Fallback sur YouTube embed si Invidious échoue
+			resolvedUrl = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1';
+		}
+	}
+
 	var player = document.createElement('video');
 	player.id = id;
-	player.src = resolveUrl(options.url);
+	player.src = resolvedUrl;
 	document.body.appendChild(player);
 
 	if (options.attenuation == null) {
@@ -345,7 +410,7 @@ function initPlayer(id, handle, options) {
 	});
 }
 
-function getPlayer(handle, options) {
+async function getPlayer(handle, options) {
 	if (handle == undefined) {
 		return;
 	}
@@ -355,7 +420,7 @@ function getPlayer(handle, options) {
 	var player = document.getElementById(id);
 
 	if (!player && options && options.url) {
-		player = initPlayer(id, handle, options);
+		player = await initPlayer(id, handle, options);
 	}
 
 	return player;
@@ -372,7 +437,7 @@ function parseTimecode(timecode) {
 	}
 }
 
-function init(data) {
+async function init(data) {
 	if (data.url == '') {
 		return;
 	}
@@ -385,7 +450,7 @@ function init(data) {
 		data.options.title = data.options.url;
 	}
 
-	getPlayer(data.handle, data.options);
+	await getPlayer(data.handle, data.options);
 }
 
 function play(handle) {
